@@ -1,5 +1,18 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 
+
+// Definições de UUIDs alinhadas com o edital
+const SERVICE_MONITORING_UUID = "0000181a-0000-1000-8000-00805f9b34fb";
+const CHAR_TELEMETRY_UUID     = "4fafc202-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_HISTORY_UUID       = "4fafc206-1fb5-459e-8fcc-c5c9c331914b";
+const SERVICE_ACTUATORS_UUID  = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_LEDS_UUID          = "4fafc203-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_RGB_UUID           = "4fafc204-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_COMMAND_UUID       = "4fafc205-1fb5-459e-8fcc-c5c9c331914b";
+const SERVICE_CONNECTION_UUID = "4fafc210-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_RSSI_UUID          = "4fafc211-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_NOTIF_COUNT_UUID   = "4fafc212-1fb5-459e-8fcc-c5c9c331914b";
+
 export function useBLEMockado() {
     const [connectedDevice, setConnectedDevice] = useState(null);
     const [allDevices, setAllDevices] = useState([]);

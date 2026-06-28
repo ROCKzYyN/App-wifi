@@ -92,3 +92,19 @@ Antes de iniciar, certifique-se de ter instalado em sua máquina:
     - Abra o aplicativo instalado.
     - No canto superior direito, ative a chave **MOCK**.
     - Clique em buscar dispositivos e conecte no dispositivo simulado para ver os gráficos e métricas oscilarem imediatamente.
+
+---
+
+## 📊 Estrutura do Perfil GATT (Serviços e Características)
+
+Para organizar os dados que trafegam entre o ESP32 e o aplicativo móvel, o perfil de banco de dados do Bluetooth Low Energy (GATT) está estruturado em **3 Serviços separados** com suas respectivas características e propriedades:
+
+| Serviço GATT | UUID do Serviço | Característica | UUID Característica | Propriedades | Descrição / Funcionamento |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. Monitoramento Ambiental** | `0x181A` | **Dados Atuais** | `4fafc202-1fb5-459e-8fcc-c5c9c331914b` | Read, Notify | Envia 20 bytes contendo os floats de temperatura, umidade, min/max e estado. |
+| | | **Gráfico Histórico** | `4fafc206-1fb5-459e-8fcc-c5c9c331914b` | Read | Transmite vetor de 48 bytes (médias das últimas 6 horas) ao se conectar. |
+| **2. Controle de Atuadores** | `4fafc201-1fb5-459e-8fcc-c5c9c331914b` | **LEDs Simples** | `4fafc203-1fb5-459e-8fcc-c5c9c331914b` | Read, Write | Aciona LEDs físicos do ESP32 (vermelho/verde) ou lê os estados físicos das chaves. |
+| | | **LED RGB** | `4fafc204-1fb5-459e-8fcc-c5c9c331914b` | Write No Resp | Controla a mistura de cores PWM do LED RGB (3 bytes: R, G, B) de forma fluida. |
+| | | **Comandos** | `4fafc205-1fb5-459e-8fcc-c5c9c331914b` | Write No Resp | Redefinições e navegação (cmd 1 = reset min/max, cmd 2 = muda tela LCD, cmd 3 = RSSI). |
+| **3. Indicadores de Conexão** | `4fafc210-1fb5-459e-8fcc-c5c9c331914b` | **RSSI** | `4fafc211-1fb5-459e-8fcc-c5c9c331914b` | Read, Notify | Indica a potência da intensidade do sinal medido do link de rádio. |
+| | | **Contador Notif.** | `4fafc212-1fb5-459e-8fcc-c5c9c331914b` | Read | Contador oficial das notificações enviadas pelo ESP32 no último minuto (PPM). |

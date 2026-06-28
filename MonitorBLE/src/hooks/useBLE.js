@@ -2,11 +2,18 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { BleManager } from 'react-native-ble-plx';
 import { PermissionsAndroid, Platform } from 'react-native';
 
-const SERVICE_UUID = "4FAFC201-1FB5-459E-8FCC-C5C9C331914B";
-const CHAR_TELEMETRY_UUID = "4FAFC202-1FB5-459E-8FCC-C5C9C331914B";
-const CHAR_LEDS_UUID = "4FAFC203-1FB5-459E-8FCC-C5C9C331914B";
-const CHAR_RGB_UUID = "4FAFC204-1FB5-459E-8FCC-C5C9C331914B";
-const CHAR_COMMAND_UUID = "4FAFC205-1FB5-459E-8FCC-C5C9C331914B";
+const SERVICE_MONITORING_UUID = "0000181a-0000-1000-8000-00805f9b34fb";
+const CHAR_TELEMETRY_UUID     = "4fafc202-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_HISTORY_UUID       = "4fafc206-1fb5-459e-8fcc-c5c9c331914b";
+
+const SERVICE_ACTUATORS_UUID  = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_LEDS_UUID          = "4fafc203-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_RGB_UUID           = "4fafc204-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_COMMAND_UUID       = "4fafc205-1fb5-459e-8fcc-c5c9c331914b";
+
+const SERVICE_CONNECTION_UUID = "4fafc210-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_RSSI_UUID          = "4fafc211-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_NOTIF_COUNT_UUID   = "4fafc212-1fb5-459e-8fcc-c5c9c331914b";
 
 export function useBLE() {
     const bleManager = useMemo(() => new BleManager(), []);
@@ -50,7 +57,7 @@ export function useBLE() {
         packetCounterRef.current = 0;
         setPacketsPerMinute(0);
 
-        // 1. Atualizar RSSI a cada 3 segundos e enviar de volta ao ESP32
+        // 1. Atualizar RSSI a cada 3 segundos, ler estados dos LEDs e o contador de notificações
         rssiIntervalRef.current = setInterval(async () => {
             try {
                 const deviceWithRssi = await device.readRSSI();
@@ -63,11 +70,44 @@ export function useBLE() {
                     const absRssi = Math.abs(rssiVal);
                     const payload = btoa(String.fromCharCode(3, absRssi));
                     await bleManager.writeCharacteristicWithoutResponseForDevice(
-                        device.id, SERVICE_UUID, CHAR_COMMAND_UUID, payload
+                        device.id, SERVICE_ACTUATORS_UUID, CHAR_COMMAND_UUID, payload
                     );
                 }
+
+                // Sincroniza estado dos LEDs físicos da placa com o painel digital do App
+                try {
+                    const ledsChar = await device.readCharacteristicForService(
+                        SERVICE_ACTUATORS_UUID, CHAR_LEDS_UUID
+                    );
+                    if (ledsChar?.value) {
+                        const buf = base64ToBytes(ledsChar.value);
+                        if (buf.byteLength >= 2) {
+                            const view = new Uint8Array(buf);
+                            setLedsState({ led1: view[0] === 1, led2: view[1] === 1 });
+                        }
+                    }
+                } catch (errLeds) {
+                    console.log("[BLE] Falha ao sincronizar LEDs físicos:", errLeds.message);
+                }
+
+                // Lê o contador oficial de notificações do último minuto gerado pelo firmware do ESP32
+                try {
+                    const countChar = await device.readCharacteristicForService(
+                        SERVICE_CONNECTION_UUID, CHAR_NOTIF_COUNT_UUID
+                    );
+                    if (countChar?.value) {
+                        const buf = base64ToBytes(countChar.value);
+                        if (buf.byteLength >= 4) {
+                            const view = new DataView(buf);
+                            const numNotif = view.getUint32(0, true);
+                            setPacketsPerMinute(numNotif);
+                        }
+                    }
+                } catch (errCount) {
+                    console.log("[BLE] Falha ao ler contador de notificações da placa:", errCount.message);
+                }
             } catch (err) {
-                console.log("[BLE] Erro ao ler/enviar RSSI:", err.message || err);
+                console.log("[BLE] Erro no ciclo de monitoramento periódico:", err.message || err);
             }
         }, 3000);
 
@@ -158,7 +198,7 @@ export function useBLE() {
 
     const startStreamingData = (device) => {
         let firstPacket = true;
-        device.monitorCharacteristicForService(SERVICE_UUID, CHAR_TELEMETRY_UUID, (error, characteristic) => {
+        device.monitorCharacteristicForService(SERVICE_MONITORING_UUID, CHAR_TELEMETRY_UUID, (error, characteristic) => {
             if (error) {
                 console.log("Erro no monitoramento de dados:", error);
                 return;
@@ -207,6 +247,29 @@ export function useBLE() {
             setConnectedDevice(deviceConnection);
             await deviceConnection.discoverAllServicesAndCharacteristics();
 
+            // Carrega o histórico inicial da placa física via leitura simples
+            try {
+                const charHistory = await deviceConnection.readCharacteristicForService(
+                    SERVICE_MONITORING_UUID, CHAR_HISTORY_UUID
+                );
+                if (charHistory?.value) {
+                    const histBuffer = base64ToBytes(charHistory.value);
+                    if (histBuffer.byteLength >= 48) {
+                        const tempHist = [];
+                        const humHist = [];
+                        for (let i = 0; i < 6; i++) {
+                            tempHist.push(parseFloatFromBuffer(histBuffer, i * 4));
+                            humHist.push(parseFloatFromBuffer(histBuffer, 24 + i * 4));
+                        }
+                        setHourlyTempHistory(tempHist);
+                        setHourlyHumHistory(humHist);
+                        console.log("[BLE] Histórico inicial carregado da placa física com sucesso!");
+                    }
+                }
+            } catch (errHistory) {
+                console.log("[BLE] Falha ao ler histórico inicial da placa:", errHistory.message || errHistory);
+            }
+
             startStreamingData(deviceConnection);
             startRealTimeMonitoring(deviceConnection);
             return true;
@@ -229,7 +292,7 @@ export function useBLE() {
         try {
             // Chamada direta no objeto do dispositivo (evita fila do bleManager)
             await connectedDevice.writeCharacteristicWithResponseForService(
-                SERVICE_UUID, CHAR_LEDS_UUID, payload
+                SERVICE_ACTUATORS_UUID, CHAR_LEDS_UUID, payload
             );
             console.log('[LED] Escrita bem-sucedida!');
         } catch (e) {
@@ -243,7 +306,7 @@ export function useBLE() {
         const payload = btoa(String.fromCharCode(r, g, b));
         try {
             await bleManager.writeCharacteristicWithoutResponseForDevice(
-                connectedDevice.id, SERVICE_UUID, CHAR_RGB_UUID, payload
+                connectedDevice.id, SERVICE_ACTUATORS_UUID, CHAR_RGB_UUID, payload
             );
         } catch (e) {
             console.log("Erro ao gravar RGB:", e);
@@ -257,7 +320,7 @@ export function useBLE() {
             // Usa writeWithoutResponse para evitar timeout de ACK.
             // Se o firmware do ESP32 exigir ACK, troque por writeCharacteristicWithResponseForDevice.
             await bleManager.writeCharacteristicWithoutResponseForDevice(
-                connectedDevice.id, SERVICE_UUID, CHAR_COMMAND_UUID, payload
+                connectedDevice.id, SERVICE_ACTUATORS_UUID, CHAR_COMMAND_UUID, payload
             );
         } catch (e) {
             console.log("Erro ao enviar comando:", e);

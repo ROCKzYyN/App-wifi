@@ -16,12 +16,22 @@
     uint32_t tMs;
     };
 
-    // --- CONFIGURAÇÃO DOS UUIDs DA TABELA GATT ---
-    #define SERVICE_UUID           "4FAFC201-1FB5-459E-8FCC-C5C9C331914B"
-    #define CHAR_TELEMETRY_UUID    "4FAFC202-1FB5-459E-8FCC-C5C9C331914B" 
-    #define CHAR_LEDS_UUID         "4FAFC203-1FB5-459E-8FCC-C5C9C331914B" 
-    #define CHAR_RGB_UUID          "4FAFC204-1FB5-459E-8FCC-C5C9C331914B" 
-    #define CHAR_COMMAND_UUID      "4FAFC205-1FB5-459E-8FCC-C5C9C331914B" 
+    // --- CONFIGURAÇÃO DOS UUIDs DA TABELA GATT (3 SERVIÇOS DO EDITAL) ---
+    // Serviço 1: Monitoramento Ambiental (padrão 16-bit BLE 0x181A)
+    #define SERVICE_MONITORING_UUID "0000181a-0000-1000-8000-00805f9b34fb"
+    #define CHAR_TELEMETRY_UUID     "4FAFC202-1FB5-459E-8FCC-C5C9C331914B" 
+    #define CHAR_HISTORY_UUID       "4FAFC206-1FB5-459E-8FCC-C5C9C331914B"
+
+    // Serviço 2: Controle de Atuadores (Customizado)
+    #define SERVICE_ACTUATORS_UUID  "4FAFC201-1FB5-459E-8FCC-C5C9C331914B"
+    #define CHAR_LEDS_UUID          "4FAFC203-1FB5-459E-8FCC-C5C9C331914B" 
+    #define CHAR_RGB_UUID           "4FAFC204-1FB5-459E-8FCC-C5C9C331914B" 
+    #define CHAR_COMMAND_UUID       "4FAFC205-1FB5-459E-8FCC-C5C9C331914B"
+
+    // Serviço 3: Indicadores de Conexão (Customizado)
+    #define SERVICE_CONNECTION_UUID "4FAFC210-1FB5-459E-8FCC-C5C9C331914B"
+    #define CHAR_RSSI_UUID          "4FAFC211-1FB5-459E-8FCC-C5C9C331914B"
+    #define CHAR_NOTIF_COUNT_UUID   "4FAFC212-1FB5-459E-8FCC-C5C9C331914B" 
 
     // --- HARDWARE MAPPING ---
     #define DHT_PIN        18
@@ -86,12 +96,43 @@
 
     // --- INSTÂNCIAS E CALLBACKS DO BLE ---
     BLEServer* pServer = nullptr;
+    
+    // Características do Serviço 1
     BLECharacteristic* pCharTelemetry = nullptr;
+    BLECharacteristic* pCharHistory = nullptr;
+    
+    // Características do Serviço 2
     BLECharacteristic* pCharLeds = nullptr;
     BLECharacteristic* pCharRgb = nullptr;
     BLECharacteristic* pCharCommand = nullptr;
+    
+    // Características do Serviço 3
+    BLECharacteristic* pCharRssi = nullptr;
+    BLECharacteristic* pCharNotifCount = nullptr;
+
     bool deviceConnected = false;
     int curRssi = 0; // Armazena a intensidade do sinal recebida do App
+    uint32_t notifSentCount = 0; // Contador de notificações enviadas no último minuto
+    uint32_t lastPpmMs = 0; // Timer para o contador PPM
+    
+    // Callbacks de segurança do BLE (Passkey Entry)
+    class MySecurityCallbacks : public BLESecurityCallbacks {
+        uint32_t onPassKeyRequest() {
+            Serial.println("[BLE] Pareamento requisitado! Passkey exigida no celular: 123456");
+            return 123456; // Senha estática do edital
+        }
+        void onPassKeyNotify(uint32_t pass_key) {}
+        bool onSecurityRequest() {
+            return true;
+        }
+        void onAuthenticationComplete(esp_ble_auth_cmpl_t auth_cmpl) {
+            if (auth_cmpl.success) {
+                Serial.println("[BLE] Autenticação com Passkey concluída! Pareado com sucesso.");
+            } else {
+                Serial.println("[BLE] Falha no pareamento. Conexão recusada.");
+            }
+        }
+    };
 
     bool remoteLocked() { return swBlock; }
 
@@ -236,9 +277,16 @@
 
     // --- CALL BACKS DE CONEXÃO SERVER BLE ---
     class ServerCallbacks: public BLEServerCallbacks {
-        void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) { // <--(EU DO FUTURO) se der pau no conetc remover o esp_ble_gatts_cb_param_t* param
+        void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) {
         deviceConnected = true;
         Serial.println("[BLE] Smartphone conectado!");
+        
+        // Sincroniza o valor atual dos LEDs para leitura inicial do app
+        uint8_t payload[2] = { (uint8_t)led1On, (uint8_t)led2On };
+        if (pCharLeds != nullptr) {
+            pCharLeds->setValue(payload, 2);
+        }
+
         if (lcdScreen == 4) renderLcd();
         }
         void onDisconnect(BLEServer* pServer) {
@@ -291,6 +339,10 @@
             Serial.println("[BLE] Comando recebido: Próxima Tela LCD");
             } else if (cmd == 3 && pCharacteristic->getLength() >= 2) {
             curRssi = -((int)data[1]); // Recebe o valor absoluto e inverte para negativo
+            if (pCharRssi != nullptr) {
+                pCharRssi->setValue(data + 1, 1);
+                pCharRssi->notify(); // Notifica o aplicativo sobre a mudança de RSSI
+            }
             if (lcdScreen == 4) renderLcd();
             Serial.printf("[BLE] Comando recebido: RSSI Atualizado para %d dBm\n", curRssi);
             }
@@ -311,6 +363,7 @@
 
     pCharTelemetry->setValue(payload, 20);
     pCharTelemetry->notify(); 
+    notifSentCount++; // Soma no contador de notificações
     }
 
     void setup() {
@@ -353,47 +406,99 @@
   #if !SIMULADOR_WOKWI
     BLEDevice::init("ESP32_Monitor_BLE");
     
+    // --- CONFIGURAÇÃO DE SEGURANÇA POR SENHA (PASSKEY) EXIGIDA PELO EDITAL ---
+    BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
+    BLEDevice::setSecurityCallbacks(new MySecurityCallbacks());
+    
+    // --- [COMENTADO] CASO DÊ PROBLEMA NA APRESENTAÇÃO DO TRABALHO, DESCOMENTE O BLOCO ABAIXO E APAGUE O BLOCO DE CIMA ---
+    /*
     BLESecurity *pSecurity = new BLESecurity();
     pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
     pSecurity->setCapability(ESP_IO_CAP_NONE);
+    */
 
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
     
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-
-    pCharTelemetry = pService->createCharacteristic(
+    // --- SERVIÇO 1: MONITORAMENTO AMBIENTAL (0x181A) ---
+    BLEService *pServiceMonitoring = pServer->createService(SERVICE_MONITORING_UUID);
+    
+    pCharTelemetry = pServiceMonitoring->createCharacteristic(
                            CHAR_TELEMETRY_UUID,
+                           BLECharacteristic::PROPERTY_READ |
                            BLECharacteristic::PROPERTY_NOTIFY
                          );
     pCharTelemetry->addDescriptor(new BLE2902());
 
-    pCharLeds = pService->createCharacteristic(
+    pCharHistory = pServiceMonitoring->createCharacteristic(
+                         CHAR_HISTORY_UUID,
+                         BLECharacteristic::PROPERTY_READ
+                       );
+    uint8_t emptyHistory[48] = {0};
+    pCharHistory->setValue(emptyHistory, 48);
+
+    pServiceMonitoring->start();
+
+    // --- SERVIÇO 2: CONTROLE DE ATUADORES ---
+    BLEService *pServiceActuators = pServer->createService(SERVICE_ACTUATORS_UUID);
+
+    pCharLeds = pServiceActuators->createCharacteristic(
                     CHAR_LEDS_UUID,
                     BLECharacteristic::PROPERTY_READ | 
                     BLECharacteristic::PROPERTY_WRITE
                   );
     pCharLeds->setCallbacks(new LedsWriteCallback());
 
-    pCharRgb = pService->createCharacteristic(
+    pCharRgb = pServiceActuators->createCharacteristic(
                    CHAR_RGB_UUID,
-                   BLECharacteristic::PROPERTY_WRITE
+                   BLECharacteristic::PROPERTY_WRITE |
+                   BLECharacteristic::PROPERTY_WRITE_NR
                  );
     pCharRgb->setCallbacks(new RgbWriteCallback());
 
-    pCharCommand = pService->createCharacteristic(
+    pCharCommand = pServiceActuators->createCharacteristic(
                        CHAR_COMMAND_UUID,
-                       BLECharacteristic::PROPERTY_WRITE
+                       BLECharacteristic::PROPERTY_WRITE |
+                       BLECharacteristic::PROPERTY_WRITE_NR
                      );
     pCharCommand->setCallbacks(new CommandCallback());
 
-    pService->start();
+    pServiceActuators->start();
 
+    // --- SERVIÇO 3: INDICADORES DE CONEXÃO ---
+    BLEService *pServiceConnection = pServer->createService(SERVICE_CONNECTION_UUID);
+
+    pCharRssi = pServiceConnection->createCharacteristic(
+                      CHAR_RSSI_UUID,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+    pCharRssi->addDescriptor(new BLE2902());
+
+    pCharNotifCount = pServiceConnection->createCharacteristic(
+                            CHAR_NOTIF_COUNT_UUID,
+                            BLECharacteristic::PROPERTY_READ
+                          );
+    uint32_t zeroVal = 0;
+    pCharNotifCount->setValue((uint8_t*)&zeroVal, 4);
+
+    pServiceConnection->start();
+
+    // --- CONFIGURAÇÃO DE RÁDIO DO ANÚNCIO (ADVERTISING) ---
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->addServiceUUID(SERVICE_MONITORING_UUID);
+    pAdvertising->addServiceUUID(SERVICE_ACTUATORS_UUID);
+    pAdvertising->addServiceUUID(SERVICE_CONNECTION_UUID);
     pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06);
-    pAdvertising->setMinPreferred(0x12);
+    
+    // Intervalo de Anúncio de 400ms (Unidade: 0.625 ms -> 400 / 0.625 = 640)
+    pAdvertising->setMinInterval(640);
+    pAdvertising->setMaxInterval(640);
+    
+    // Parâmetros preferidos de conexão (Mínimo 50 ms, Máximo 100 ms)
+    pAdvertising->setMinPreferred(0x28); // 40 * 1.25 ms = 50 ms
+    pAdvertising->setMaxPreferred(0x50); // 80 * 1.25 ms = 100 ms
+    
     BLEDevice::startAdvertising();
     
     Serial.println("[BLE] Servidor pronto na placa física!");
@@ -426,10 +531,34 @@
     if (now - lastHistMs >= HISTORY_SLOT_MS) {
         lastHistMs = now;
         if (accN > 0) { 
-        pushHistorySlot(accTemp/accN, accHum/accN); 
-        accTemp = accHum = 0; 
-        accN = 0; 
+            pushHistorySlot(accTemp/accN, accHum/accN); 
+            accTemp = accHum = 0; 
+            accN = 0; 
+
+            // Atualiza a característica do histórico com as últimas 6 médias de 10 min
+            if (deviceConnected && pCharHistory != nullptr) {
+                uint8_t histPayload[48] = {0};
+                uint8_t startIdx = (histCount >= 6) ? (histCount - 6) : 0;
+                uint8_t countToCopy = (histCount >= 6) ? 6 : histCount;
+                for (uint8_t i = 0; i < countToCopy; i++) {
+                    float tempVal = histTemp[startIdx + i];
+                    float humVal  = histHum[startIdx + i];
+                    memcpy(&histPayload[i * 4], &tempVal, 4);
+                    memcpy(&histPayload[24 + i * 4], &humVal, 4);
+                }
+                pCharHistory->setValue(histPayload, 48);
+            }
         }
+    }
+
+    if (now - lastPpmMs >= 60000) {
+        lastPpmMs = now;
+        if (deviceConnected && pCharNotifCount != nullptr) {
+            uint32_t val = notifSentCount;
+            pCharNotifCount->setValue((uint8_t*)&val, 4);
+            Serial.printf("[BLE] Contador de Notificações do último minuto atualizado para: %d\n", val);
+        }
+        notifSentCount = 0;
     }
 
     if (now - lastSendMs >= SEND_MS) {
