@@ -11,7 +11,7 @@ O objetivo do projeto é desenvolver um sistema embarcado que monitora temperatu
 Optamos pela **Opção B**, desenvolvendo um painel web próprio em HTML/CSS/JS que se comunica com o ESP32 através de WebSockets no broker público da HiveMQ. Essa escolha oferece controle visual total sobre a interface do usuário (design premium responsivo com dark mode e glassmorphism), além de eliminar dependências de limites restritivos de planos gratuitos de plataformas prontas.
 
 ### 📌 Links do Projeto
-*   **Simulador Wokwi:** [Link do Projeto no Wokwi](https://wokwi.com/projects/468103168593276929)
+*   **Simulador Wokwi:** [Link do Projeto no Wokwi](https://wokwi.com/projects/468106849083704321)
 *   **Repositório GitHub:** [https://github.com/ROCKzYyN/App-wifi.git](https://github.com/ROCKzYyN/App-wifi.git)
 
 ---
