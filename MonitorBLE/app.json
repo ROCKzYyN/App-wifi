@@ -24,9 +24,6 @@
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT"
       ],
       "package": "com.anonymous.MonitorBLE"
@@ -36,6 +33,11 @@
     },
     "plugins": [
       "react-native-ble-plx"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "27ff2b39-e41b-483b-bdc9-61fd6e8f53f5"
+      }
+    }
   }
 }
