@@ -1,18 +1,46 @@
 import React from 'react';
-import { View, Text, Button, TouchableOpacity } from 'react-native';
-import { styles } from '../styles/theme';
+import { ScrollView, View, Text, Button, TouchableOpacity } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
+import { styles, chartConfig, screenWidth } from '../styles/theme';
+
+const getRssiLabel = (rssiVal) => {
+  if (rssiVal >= -60) return 'Excelente';
+  if (rssiVal >= -70) return 'Bom';
+  if (rssiVal >= -85) return 'Regular';
+  return 'Fraco';
+};
+
+const getRssiColor = (rssiVal) => {
+  if (rssiVal >= -60) return '#4CAF50';
+  if (rssiVal >= -70) return '#8BC34A';
+  if (rssiVal >= -85) return '#FF9800';
+  return '#F44336';
+};
 
 export default function ControlScreen({
   ledsState,
   writeLeds,
   writeRgb,
-  setCurrentScreen
+  setCurrentScreen,
+  // Novos dados
+  rssi,
+  rssiHistory
 }) {
   return (
-    <View style={styles.screen}>
+    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
       <View style={{ width: '100%', alignItems: 'center' }}>
         <Text style={styles.title}>Painel de Controle</Text>
         <Text style={styles.subtitle}>Comandos diretos para os pinos do ESP32</Text>
+
+        {/* Monitor RSSI do Link */}
+        <View style={[styles.card, { backgroundColor: '#ECEFF1', width: '100%', marginBottom: 15, marginHorizontal: 0 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={styles.cardLabel}>Sinal da Conexão (RSSI):</Text>
+            <Text style={{ fontSize: 16, fontWeight: 'bold', color: getRssiColor(rssi) }}>
+              {rssi} dBm ({getRssiLabel(rssi)})
+            </Text>
+          </View>
+        </View>
 
         {/* Chaves ON/OFF dos LEDs Simples */}
         <View style={styles.ledControlCard}>
@@ -60,14 +88,31 @@ export default function ControlScreen({
             onPress={() => writeRgb(0, 0, 0)}
           />
         </View>
+
+        {/* Gráfico do Histórico de RSSI */}
+        <Text style={[styles.chartTitle, { marginTop: 20 }]}>Histórico de Sinal (RSSI)</Text>
+        {rssiHistory && rssiHistory.length > 0 && (
+          <LineChart
+            data={{ datasets: [{ data: rssiHistory }] }}
+            width={screenWidth - 40}
+            height={110}
+            chartConfig={{
+              ...chartConfig,
+              color: (opacity = 1) => `rgba(96, 125, 139, ${opacity})`,
+              propsForDots: { r: '3', strokeWidth: '1.5', stroke: '#607D8B' }
+            }}
+            bezier
+            style={styles.chart}
+          />
+        )}
       </View>
 
-      <View style={{ width: '100%', marginTop: 'auto' }}>
+      <View style={{ width: '100%', marginTop: 25 }}>
         <Button
           title="Voltar ao Dashboard"
           onPress={() => setCurrentScreen('Dashboard')}
         />
       </View>
-    </View>
+    </ScrollView>
   );
 }

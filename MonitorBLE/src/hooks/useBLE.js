@@ -1,8 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { BleManager } from 'react-native-ble-plx';
 import { PermissionsAndroid, Platform } from 'react-native';
 
-// UUIDs idênticos aos que configuramos no setup() do ESP32
 const SERVICE_UUID = "4FAFC201-1FB5-459E-8FCC-C5C9C331914B";
 const CHAR_TELEMETRY_UUID = "4FAFC202-1FB5-459E-8FCC-C5C9C331914B";
 const CHAR_LEDS_UUID = "4FAFC203-1FB5-459E-8FCC-C5C9C331914B";
@@ -14,17 +13,86 @@ export function useBLE() {
     const [connectedDevice, setConnectedDevice] = useState(null);
     const [allDevices, setAllDevices] = useState([]);
 
-    // Estados da Telemetria Atual e Extremos
     const [telemetry, setTelemetry] = useState({
         temp: 0, hum: 0, minTemp: 0, maxTemp: 0, minHum: 0, maxHum: 0
     });
 
-    // Histórico para alimentar o Gráfico (guarda as últimas 6 leituras)
     const [tempHistory, setTempHistory] = useState([0, 0, 0, 0, 0, 0]);
     const [humHistory, setHumHistory] = useState([0, 0, 0, 0, 0, 0]);
-
-    // Estado dos LEDs (vêm do ESP32)
     const [ledsState, setLedsState] = useState({ led1: false, led2: false });
+
+    // Novos estados de RSSI, PPM e Histórico de Hora em Hora
+    const [rssi, setRssi] = useState(-100);
+    const [rssiHistory, setRssiHistory] = useState([-100, -100, -100, -100, -100, -100]);
+    const [packetsPerMinute, setPacketsPerMinute] = useState(0);
+
+    const [hourlyTempHistory, setHourlyTempHistory] = useState([0, 0, 0, 0, 0, 0]);
+    const [hourlyHumHistory, setHourlyHumHistory] = useState([0, 0, 0, 0, 0, 0]);
+    const [hourlyLabels, setHourlyLabels] = useState(() => {
+        const labels = [];
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getTime() - i * 60 * 60 * 1000);
+            labels.push(`${d.getHours()}h`);
+        }
+        return labels;
+    });
+
+    // Refs para gerenciamento de timers
+    const rssiIntervalRef = useRef(null);
+    const ppmIntervalRef = useRef(null);
+    const hourlyIntervalRef = useRef(null);
+    const packetCounterRef = useRef(0);
+
+    const startRealTimeMonitoring = (device) => {
+        stopRealTimeMonitoring();
+
+        packetCounterRef.current = 0;
+        setPacketsPerMinute(0);
+
+        // 1. Atualizar RSSI a cada 3 segundos
+        rssiIntervalRef.current = setInterval(async () => {
+            try {
+                const deviceWithRssi = await device.readRSSI();
+                if (deviceWithRssi.rssi) {
+                    setRssi(deviceWithRssi.rssi);
+                    setRssiHistory(prev => [...prev.slice(1), deviceWithRssi.rssi]);
+                }
+            } catch (err) {
+                console.log("[BLE] Erro ao ler RSSI:", err.message || err);
+            }
+        }, 3000);
+
+        // 2. Contador de pacotes por minuto (PPM) a cada 60 segundos
+        ppmIntervalRef.current = setInterval(() => {
+            setPacketsPerMinute(packetCounterRef.current);
+            console.log(`[BLE] Pacotes recebidos no último minuto: ${packetCounterRef.current}`);
+            packetCounterRef.current = 0;
+        }, 60000);
+
+        // 3. Atualizar histórico local de hora em hora
+        hourlyIntervalRef.current = setInterval(() => {
+            const now = new Date();
+            const hourLabel = `${now.getHours()}h`;
+
+            setHourlyLabels(labels => [...labels.slice(1), hourLabel]);
+            setTelemetry(current => {
+                setHourlyTempHistory(hist => [...hist.slice(1), current.temp]);
+                setHourlyHumHistory(hist => [...hist.slice(1), current.hum]);
+                return current;
+            });
+        }, 60 * 60 * 1000);
+    };
+
+    const stopRealTimeMonitoring = () => {
+        if (rssiIntervalRef.current) clearInterval(rssiIntervalRef.current);
+        if (ppmIntervalRef.current) clearInterval(ppmIntervalRef.current);
+        if (hourlyIntervalRef.current) clearInterval(hourlyIntervalRef.current);
+    };
+
+    useEffect(() => {
+        return () => stopRealTimeMonitoring();
+    }, []);
 
     const requestPermissions = async () => {
         if (Platform.OS === 'android') {
@@ -57,24 +125,31 @@ export function useBLE() {
         });
     };
 
-    // Função auxiliar para converter Base64 vindo do BLE em um Array de Bytes
     const base64ToBytes = (base64) => {
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+        if (!base64) return new ArrayBuffer(0);
+        try {
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        } catch (e) {
+            console.log("Erro conversao base64:", e);
+            return new ArrayBuffer(0);
         }
-        return bytes.buffer;
     };
 
-    // Função para ler 4 bytes seguidos e transformar de volta em um número Float
     const parseFloatFromBuffer = (buffer, byteOffset) => {
+        if (!buffer || buffer.byteLength < byteOffset + 4) {
+            throw new Error(`Buffer muito pequeno para ler offset ${byteOffset}`);
+        }
         const view = new DataView(buffer);
-        return view.getFloat32(byteOffset, true); // true = Little Endian (padrão do ESP32)
+        return view.getFloat32(byteOffset, true);
     };
 
-    // Iniciar a escuta ativa de dados por Notificação GATT
     const startStreamingData = (device) => {
+        let firstPacket = true;
         device.monitorCharacteristicForService(SERVICE_UUID, CHAR_TELEMETRY_UUID, (error, characteristic) => {
             if (error) {
                 console.log("Erro no monitoramento de dados:", error);
@@ -82,22 +157,36 @@ export function useBLE() {
             }
             if (characteristic?.value) {
                 const buffer = base64ToBytes(characteristic.value);
+                packetCounterRef.current += 1;
 
-                // Desempacota os 6 floats na ordem idêntica do firmware
-                const t = parseFloatFromBuffer(buffer, 0);
-                const h = parseFloatFromBuffer(buffer, 4);
-                const mnT = parseFloatFromBuffer(buffer, 8);
-                const mxT = parseFloatFromBuffer(buffer, 12);
-                const mnH = parseFloatFromBuffer(buffer, 16);
-                const mxH = parseFloatFromBuffer(buffer, 20);
+                // Loga o tamanho do primeiro pacote para diagnóstico
+                if (firstPacket) {
+                    console.log(`[BLE] Primeiro pacote recebido: ${buffer.byteLength} bytes`);
+                    firstPacket = false;
+                }
 
-                // Atualiza o painel instantâneo se os valores forem válidos
-                if (!isNaN(t) && !isNaN(h)) {
-                    setTelemetry({ temp: t, hum: h, minTemp: mnT, maxTemp: mxT, minHum: mnH, maxHum: mxH });
+                // Requer pelo menos temp + hum (8 bytes) para processar
+                if (buffer.byteLength < 8) {
+                    console.log(`[BLE] Pacote muito pequeno (${buffer.byteLength} bytes), ignorando.`);
+                    return;
+                }
 
-                    // Atualiza a fila do gráfico (remove o mais antigo, adiciona o novo no fim)
-                    setTempHistory((prev) => [...prev.slice(1), t]);
-                    setHumHistory((prev) => [...prev.slice(1), h]);
+                try {
+                    // Leitura adaptativa: só lê os campos que o buffer comporta
+                    const t    = parseFloatFromBuffer(buffer, 0);
+                    const h    = parseFloatFromBuffer(buffer, 4);
+                    const mnT  = buffer.byteLength >= 12 ? parseFloatFromBuffer(buffer, 8)  : 0;
+                    const mxT  = buffer.byteLength >= 16 ? parseFloatFromBuffer(buffer, 12) : 0;
+                    const mnH  = buffer.byteLength >= 20 ? parseFloatFromBuffer(buffer, 16) : 0;
+                    const mxH  = buffer.byteLength >= 24 ? parseFloatFromBuffer(buffer, 20) : mnH;
+
+                    if (!isNaN(t) && !isNaN(h)) {
+                        setTelemetry({ temp: t, hum: h, minTemp: mnT, maxTemp: mxT, minHum: mnH, maxHum: mxH });
+                        setTempHistory((prev) => [...prev.slice(1), t]);
+                        setHumHistory((prev) => [...prev.slice(1), h]);
+                    }
+                } catch (errorLeitura) {
+                    console.log("[BLE] Erro ao ler pacote:", errorLeitura.message);
                 }
             }
         });
@@ -110,8 +199,8 @@ export function useBLE() {
             setConnectedDevice(deviceConnection);
             await deviceConnection.discoverAllServicesAndCharacteristics();
 
-            // Inicia o fluxo de gráficos imediatamente após conectar
             startStreamingData(deviceConnection);
+            startRealTimeMonitoring(deviceConnection);
             return true;
         } catch (e) {
             console.log("Erro ao conectar:", e);
@@ -119,23 +208,28 @@ export function useBLE() {
         }
     };
 
-    // --- FUNÇÕES DE ENVIO DE COMANDO (CELULAR -> ESP32) ---
-
-    // Enviar comando para ligar/desligar LED1 e LED2
     const writeLeds = async (l1, l2) => {
-        if (!connectedDevice) return;
+        if (!connectedDevice) {
+            console.log('[LED] writeLeds chamado mas connectedDevice é null!');
+            return;
+        }
+        console.log(`[LED] Enviando: led1=${l1}, led2=${l2} para device ${connectedDevice.id}`);
         const payload = btoa(String.fromCharCode(l1 ? 1 : 0, l2 ? 1 : 0));
+        // Salva estado anterior para poder reverter em caso de falha
+        const prev = ledsState;
+        setLedsState({ led1: l1, led2: l2 });
         try {
-            await bleManager.writeCharacteristicWithResponseForDevice(
-                connectedDevice.id, SERVICE_UUID, CHAR_LEDS_UUID, payload
+            // Chamada direta no objeto do dispositivo (evita fila do bleManager)
+            await connectedDevice.writeCharacteristicWithResponseForService(
+                SERVICE_UUID, CHAR_LEDS_UUID, payload
             );
-            setLedsState({ led1: l1, led2: l2 });
+            console.log('[LED] Escrita bem-sucedida!');
         } catch (e) {
-            console.log("Erro ao gravar LEDs:", e);
+            console.log('[LED] Erro ao gravar LEDs:', e.message || e);
+            setLedsState(prev); // Reverte para o estado anterior correto
         }
     };
 
-    // Enviar cor selecionada para o LED RGB
     const writeRgb = async (r, g, b) => {
         if (!connectedDevice) return;
         const payload = btoa(String.fromCharCode(r, g, b));
@@ -148,12 +242,13 @@ export function useBLE() {
         }
     };
 
-    // Enviar comandos simples (1 = Reset Min/Max, 2 = Próxima Tela LCD)
     const sendCommand = async (cmdId) => {
         if (!connectedDevice) return;
         const payload = btoa(String.fromCharCode(cmdId));
         try {
-            await bleManager.writeCharacteristicWithResponseForDevice(
+            // Usa writeWithoutResponse para evitar timeout de ACK.
+            // Se o firmware do ESP32 exigir ACK, troque por writeCharacteristicWithResponseForDevice.
+            await bleManager.writeCharacteristicWithoutResponseForDevice(
                 connectedDevice.id, SERVICE_UUID, CHAR_COMMAND_UUID, payload
             );
         } catch (e) {
@@ -163,6 +258,7 @@ export function useBLE() {
 
     const disconnectDevice = async () => {
         if (connectedDevice) {
+            stopRealTimeMonitoring();
             await bleManager.cancelDeviceConnection(connectedDevice.id);
             setConnectedDevice(null);
         }
@@ -181,6 +277,13 @@ export function useBLE() {
         ledsState,
         writeLeds,
         writeRgb,
-        sendCommand
+        sendCommand,
+        // Novos retornos para equiparar com o mock
+        rssi,
+        rssiHistory,
+        packetsPerMinute,
+        hourlyTempHistory,
+        hourlyHumHistory,
+        hourlyLabels
     };
 }

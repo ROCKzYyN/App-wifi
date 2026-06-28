@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SafeAreaView, Alert } from 'react-native';
 import { useBLE } from './src/hooks/useBLE';
+import { useBLEMockado } from './src/hooks/useBLEMockado';
 import { styles } from './src/styles/theme';
 import Header from './src/components/Header';
 import ConnectionScreen from './src/screens/ConnectionScreen';
@@ -10,6 +11,12 @@ import ControlScreen from './src/screens/ControlScreen';
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('Connection');
   const [isScanning, setIsScanning] = useState(false);
+  const [isMockEnabled, setIsMockEnabled] = useState(false);
+
+  const bleReal = useBLE();
+  const bleMock = useBLEMockado();
+  
+  const ble = isMockEnabled ? bleMock : bleReal;
 
   const {
     requestPermissions,
@@ -24,8 +31,15 @@ export default function App() {
     ledsState,
     writeLeds,
     writeRgb,
-    sendCommand
-  } = useBLE();
+    sendCommand,
+    // Novos estados
+    rssi,
+    rssiHistory,
+    packetsPerMinute,
+    hourlyTempHistory,
+    hourlyHumHistory,
+    hourlyLabels
+  } = ble;
 
   const handleStartScan = async () => {
     const hasPermissions = await requestPermissions();
@@ -53,10 +67,22 @@ export default function App() {
     setCurrentScreen('Connection');
   };
 
+  const handleToggleMock = async (newVal) => {
+    if (connectedDevice) {
+      await disconnectDevice();
+    }
+    setIsMockEnabled(newVal);
+    setCurrentScreen('Connection'); // volta para a tela de conexão ao alternar para re-escanear
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Cabeçalho Fixo */}
-      <Header connectedDevice={connectedDevice} />
+      <Header 
+        connectedDevice={connectedDevice} 
+        isMockEnabled={isMockEnabled}
+        onToggleMock={handleToggleMock}
+      />
 
       {/* TELA 1: CONEXÃO */}
       {currentScreen === 'Connection' && (
@@ -77,6 +103,13 @@ export default function App() {
           sendCommand={sendCommand}
           setCurrentScreen={setCurrentScreen}
           handleDisconnect={handleDisconnect}
+          // Novos dados passados
+          rssi={rssi}
+          rssiHistory={rssiHistory}
+          packetsPerMinute={packetsPerMinute}
+          hourlyTempHistory={hourlyTempHistory}
+          hourlyHumHistory={hourlyHumHistory}
+          hourlyLabels={hourlyLabels}
         />
       )}
 
@@ -87,6 +120,9 @@ export default function App() {
           writeLeds={writeLeds}
           writeRgb={writeRgb}
           setCurrentScreen={setCurrentScreen}
+          // Novos dados de RSSI passados
+          rssi={rssi}
+          rssiHistory={rssiHistory}
         />
       )}
     </SafeAreaView>
