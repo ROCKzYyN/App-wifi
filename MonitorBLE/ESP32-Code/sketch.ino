@@ -50,7 +50,7 @@
     #define SW_UNIT_PIN    33
 
     #define RGB_COMMON_ANODE   false
-    #define SIMULADOR_WOKWI true  // Mude para false antes de entregar 
+    #define SIMULADOR_WOKWI false  // Mude para false antes de entregar 
 
     const uint32_t DHT_READ_MS      = 2000;
     const uint32_t LCD_AUTO_MS      = 5000;

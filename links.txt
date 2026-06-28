@@ -1,0 +1,3 @@
+WOKWI: https://wokwi.com/projects/468100145236008961
+APK: https://expo.dev/accounts/wictorrkz/projects/MonitorBLE/builds/c5c98959-ca3b-4fd2-90dc-b1892a2485fc
+GIT: https://github.com/wictorrkz/App-bt/blob/main/MonitorBLE/
