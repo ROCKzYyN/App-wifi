@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SafeAreaView, Alert } from 'react-native';
-import { useBLE } from './src/hooks/useBLE';
+import { useWiFi } from './src/hooks/useWiFi';
 import { useBLEMockado } from './src/hooks/useBLEMockado';
 import { styles } from './src/styles/theme';
 import Header from './src/components/Header';
@@ -13,10 +13,11 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [isMockEnabled, setIsMockEnabled] = useState(false);
 
-  const bleReal = useBLE();
+  const wifiReal = useWiFi();
   const bleMock = useBLEMockado();
   
-  const ble = isMockEnabled ? bleMock : bleReal;
+  const ble = isMockEnabled ? bleMock : wifiReal;
+
 
   const {
     requestPermissions,
@@ -46,9 +47,9 @@ export default function App() {
     if (hasPermissions) {
       setIsScanning(true);
       scanForDevices();
-      setTimeout(() => { setIsScanning(false); }, 10000);
+      setTimeout(() => { setIsScanning(false); }, 3000); // 3 segundos para carregar canais é suficiente
     } else {
-      Alert.alert("Permissão Negada", "Ative o Bluetooth e a Localização nas configurações.");
+      Alert.alert("Erro", "Não foi possível buscar canais.");
     }
   };
 
@@ -58,9 +59,10 @@ export default function App() {
     if (success) {
       setCurrentScreen('Dashboard');
     } else {
-      Alert.alert("Erro", "Falha ao conectar por Passkey. Verifique o ESP32.");
+      Alert.alert("Erro", "Falha ao conectar ao Broker MQTT. Verifique a conexão e o prefixo do ESP32.");
     }
   };
+
 
   const handleDisconnect = async () => {
     await disconnectDevice();

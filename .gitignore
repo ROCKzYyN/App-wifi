@@ -1,7 +1,4 @@
-# Ignorar dependências e pastas geradas pelo Expo na subpasta MonitorBLE
-MonitorBLE/node_modules/
-MonitorBLE/android/
-MonitorBLE/ios/
-MonitorBLE/.expo/
-MonitorBLE/web-build/
-MonitorBLE/dist/
+# Ignorar segredos do Wi-Fi e MQTT
+
+MonitorWiFi/ESP32-WiFi/secrets.h
+**/secrets.h

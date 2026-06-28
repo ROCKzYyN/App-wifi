@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "MonitorBLE",
-    "slug": "MonitorBLE",
+    "name": "MonitorWiFi",
+    "slug": "MonitorWiFi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,22 +22,19 @@
       },
       "edgeToEdgeEnabled": false,
       "permissions": [
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_CONNECT"
+        "android.permission.INTERNET"
       ],
-      "package": "com.anonymous.MonitorBLE"
+      "package": "com.anonymous.MonitorWiFi"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "react-native-ble-plx"
-    ],
+    "plugins": [],
     "extra": {
       "eas": {
         "projectId": "27ff2b39-e41b-483b-bdc9-61fd6e8f53f5"
       }
+
     }
   }
 }

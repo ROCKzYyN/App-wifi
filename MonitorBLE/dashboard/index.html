@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 IoT Dashboard - Monitoramento de Temperatura</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- MQTT.js -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="logo-area">
+                <i data-lucide="cpu" class="logo-icon"></i>
+                <div class="logo-text">
+                    <h1>ESP32 Monitor</h1>
+                    <p>Telemetria Wi-Fi & MQTT - GEX1087</p>
+                </div>
+            </div>
+            <div class="connection-status-pill offline" id="broker-status-pill">
+                <span class="status-dot"></span>
+                <span id="broker-status-text">Broker Desconectado</span>
+            </div>
+        </header>
+
+        <!-- Configurações de Conexão -->
+        <section class="card config-card">
+            <div class="card-header">
+                <i data-lucide="settings"></i>
+                <h2>Configuração da Conexão MQTT</h2>
+            </div>
+            <div class="config-grid">
+                <div class="input-group">
+                    <label for="mqtt-broker">Broker WebSocket</label>
+                    <input type="text" id="mqtt-broker" value="wss://broker.hivemq.com:8884/mqtt" placeholder="Ex: wss://broker.hivemq.com:8884/mqtt">
+                </div>
+                <div class="input-group">
+                    <label for="mqtt-prefix">Prefixo dos Tópicos</label>
+                    <input type="text" id="mqtt-prefix" value="uffs/gex1087/monitor_wifi_dupla" placeholder="Ex: uffs/gex1087/monitor_wifi_dupla">
+                </div>
+                <button id="btn-connect" class="btn btn-primary">
+                    <i data-lucide="power"></i> Conectar
+                </button>
+            </div>
+        </section>
+
+        <!-- Grid Principal de Monitoramento -->
+        <main class="dashboard-grid">
+            <!-- Coluna 1: Dados Atuais e Controles -->
+            <div class="dashboard-column flex-col">
+                <!-- Status do Dispositivo -->
+                <div class="card status-card">
+                    <div class="status-indicator">
+                        <div class="status-circle offline" id="device-status-circle"></div>
+                        <div class="status-info">
+                            <span class="label">Status do Dispositivo</span>
+                            <h3 id="device-status-text">OFFLINE</h3>
+                        </div>
+                    </div>
+                    <div class="status-details">
+                        <div class="detail-item">
+                            <i data-lucide="wifi"></i>
+                            <div>
+                                <span class="label">Sinal Wi-Fi</span>
+                                <h4 id="rssi-val">-- dBm</h4>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <i data-lucide="activity"></i>
+                            <div>
+                                <span class="label">Atualizações / min</span>
+                                <h4 id="update-rate">0</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Leituras do Sensor -->
+                <div class="card readings-card">
+                    <div class="card-header">
+                        <i data-lucide="thermometer"></i>
+                        <h2>Medições em Tempo Real</h2>
+                    </div>
+                    <div class="readings-grid">
+                        <div class="reading-box temp-box">
+                            <span class="reading-label">Temperatura</span>
+                            <div class="value-display">
+                                <span id="temp-c">--</span><span class="unit">°C</span>
+                            </div>
+                            <div class="sub-value" id="temp-f-container">
+                                <span id="temp-f">--</span><span class="unit-sub">°F</span>
+                            </div>
+                        </div>
+                        <div class="reading-box hum-box">
+                            <span class="reading-label">Umidade</span>
+                            <div class="value-display">
+                                <span id="humidity">--</span><span class="unit">%</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" id="humidity-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Painel de Controle de Atuadores -->
+                <div class="card controls-card">
+                    <div class="card-header">
+                        <i data-lucide="sliders"></i>
+                        <h2>Controle de Atuadores</h2>
+                    </div>
+                    <div class="controls-grid">
+                        <!-- LED Simples 1 -->
+                        <div class="control-box">
+                            <div class="control-info">
+                                <h3>LED Verde (LED 1)</h3>
+                                <p>Comando Digital 1</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="led1-switch" disabled>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <!-- LED Simples 2 -->
+                        <div class="control-box">
+                            <div class="control-info">
+                                <h3>LED Vermelho (LED 2)</h3>
+                                <p>Comando Digital 2</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="led2-switch" disabled>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <!-- LED RGB -->
+                        <div class="rgb-control-box">
+                            <div class="rgb-header">
+                                <h3>LED RGB</h3>
+                                <div class="rgb-preview" id="rgb-preview"></div>
+                            </div>
+                            <div class="rgb-inputs">
+                                <div class="color-slider-group">
+                                    <span class="color-lbl r-lbl">R</span>
+                                    <input type="range" id="rgb-r" min="0" max="255" value="0" disabled>
+                                    <span class="val-lbl" id="rgb-r-val">0</span>
+                                </div>
+                                <div class="color-slider-group">
+                                    <span class="color-lbl g-lbl">G</span>
+                                    <input type="range" id="rgb-g" min="0" max="255" value="0" disabled>
+                                    <span class="val-lbl" id="rgb-g-val">0</span>
+                                </div>
+                                <div class="color-slider-group">
+                                    <span class="color-lbl b-lbl">B</span>
+                                    <input type="range" id="rgb-b" min="0" max="255" value="0" disabled>
+                                    <span class="val-lbl" id="rgb-b-val">0</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Ações Globais -->
+                        <div class="actions-box">
+                            <button id="btn-reset-minmax" class="btn btn-secondary" disabled>
+                                <i data-lucide="rotate-ccw"></i> Resetar Histórico Mín/Máx
+                            </button>
+                        </div>
+                    </div>
+                    <div class="local-lock-alert" id="local-lock-alert" style="display: none;">
+                        <i data-lucide="lock"></i>
+                        <span>Controle Remoto bloqueado no ESP32 (Chave física de Bloqueio ativa).</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coluna 2: Gráficos de Histórico -->
+            <div class="dashboard-column flex-col">
+                <!-- Gráfico de Temperatura e Umidade -->
+                <div class="card chart-card">
+                    <div class="card-header flex-between">
+                        <div class="header-title">
+                            <i data-lucide="trending-up"></i>
+                            <h2>Gráfico Histórico (Últimos 60 min)</h2>
+                        </div>
+                        <div class="chart-unit-indicator" id="chart-unit-indicator">
+                            Exibindo: <span id="current-chart-unit">Celsius (°C)</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="historyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Gráfico de RSSI -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <i data-lucide="wifi"></i>
+                        <h2>Intensidade de Sinal RSSI (Últimos 60s)</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="rssiChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Script Principal -->
+    <script src="app.js"></script>
+    <script>
+        // Inicializa ícones Lucide
+        lucide.createIcons();
+    </script>
+</body>
+</html>

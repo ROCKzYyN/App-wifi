@@ -42,7 +42,8 @@ export default function DashboardScreen({
 
       {/* Métricas de Conexão (PPM & RSSI) */}
       <View style={[styles.card, { backgroundColor: '#ECEFF1', width: '100%', marginBottom: 15, marginHorizontal: 0 }]}>
-        <Text style={styles.cardLabel}>Métricas de Conexão (BLE)</Text>
+        <Text style={styles.cardLabel}>Métricas de Conexão (Wi-Fi)</Text>
+
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
           <View>
             <Text style={{ fontSize: 12, color: '#555' }}>Intensidade de Sinal (RSSI)</Text>
