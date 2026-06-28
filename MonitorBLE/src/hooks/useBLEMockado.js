@@ -129,6 +129,10 @@ export function useBLEMockado() {
                 const diff = Math.round((Math.random() - 0.5) * 8);
                 const nextRssi = Math.max(-85, Math.min(-50, prev + diff));
                 setRssiHistory(history => [...history.slice(1), nextRssi]);
+                
+                // Simula o envio de RSSI de volta para o ESP32 mockado
+                console.log(`[MOCK-ESP32] RSSI enviado de volta: ${nextRssi} dBm`);
+                
                 return nextRssi;
             });
         }, 3000);

@@ -50,16 +50,24 @@ export function useBLE() {
         packetCounterRef.current = 0;
         setPacketsPerMinute(0);
 
-        // 1. Atualizar RSSI a cada 3 segundos
+        // 1. Atualizar RSSI a cada 3 segundos e enviar de volta ao ESP32
         rssiIntervalRef.current = setInterval(async () => {
             try {
                 const deviceWithRssi = await device.readRSSI();
                 if (deviceWithRssi.rssi) {
-                    setRssi(deviceWithRssi.rssi);
-                    setRssiHistory(prev => [...prev.slice(1), deviceWithRssi.rssi]);
+                    const rssiVal = deviceWithRssi.rssi;
+                    setRssi(rssiVal);
+                    setRssiHistory(prev => [...prev.slice(1), rssiVal]);
+
+                    // Envia comando 3 com o RSSI absoluto positivo
+                    const absRssi = Math.abs(rssiVal);
+                    const payload = btoa(String.fromCharCode(3, absRssi));
+                    await bleManager.writeCharacteristicWithoutResponseForDevice(
+                        device.id, SERVICE_UUID, CHAR_COMMAND_UUID, payload
+                    );
                 }
             } catch (err) {
-                console.log("[BLE] Erro ao ler RSSI:", err.message || err);
+                console.log("[BLE] Erro ao ler/enviar RSSI:", err.message || err);
             }
         }, 3000);
 
