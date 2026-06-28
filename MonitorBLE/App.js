@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { SafeAreaView, Alert } from 'react-native';
 import { useWiFi } from './src/hooks/useWiFi';
-import { useBLEMockado } from './src/hooks/useBLEMockado';
 import { styles } from './src/styles/theme';
 import Header from './src/components/Header';
 import ConnectionScreen from './src/screens/ConnectionScreen';
@@ -11,12 +10,10 @@ import ControlScreen from './src/screens/ControlScreen';
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('Connection');
   const [isScanning, setIsScanning] = useState(false);
-  const [isMockEnabled, setIsMockEnabled] = useState(false);
 
   const wifiReal = useWiFi();
-  const bleMock = useBLEMockado();
-  
-  const ble = isMockEnabled ? bleMock : wifiReal;
+  const ble = wifiReal;
+
 
 
   const {
@@ -69,22 +66,14 @@ export default function App() {
     setCurrentScreen('Connection');
   };
 
-  const handleToggleMock = async (newVal) => {
-    if (connectedDevice) {
-      await disconnectDevice();
-    }
-    setIsMockEnabled(newVal);
-    setCurrentScreen('Connection'); // volta para a tela de conexão ao alternar para re-escanear
-  };
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Cabeçalho Fixo */}
       <Header 
         connectedDevice={connectedDevice} 
-        isMockEnabled={isMockEnabled}
-        onToggleMock={handleToggleMock}
       />
+
 
       {/* TELA 1: CONEXÃO */}
       {currentScreen === 'Connection' && (
