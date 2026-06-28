@@ -1,5 +1,11 @@
 # Monitor BLE - ESP32 📱🔌
 
+[![EAS Build](https://img.shields.io/badge/EAS_Build-APK_Dispon%C3%ADvel-green?style=for-the-badge&logo=expo)](https://expo.dev/accounts/wictorrkz/projects/MonitorBLE/builds/c5c98959-ca3b-4fd2-90dc-b1892a2485fc)
+
+📱 **[CLIQUE AQUI PARA INSTALAR O APP NO SEU ANDROID (APK)](https://expo.dev/accounts/wictorrkz/projects/MonitorBLE/builds/c5c98959-ca3b-4fd2-90dc-b1892a2485fc)**
+
+---
+
 Aplicativo desenvolvido para a disciplina de **Tópicos Especiais**, com o objetivo de realizar o monitoramento de telemetria em tempo real e o controle de atuadores em uma placa **ESP32** utilizando comunicação **Bluetooth Low Energy (BLE)** em um ambiente mobile desenvolvido com **React Native** e **Expo**.
 
 ---

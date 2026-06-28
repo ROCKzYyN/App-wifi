@@ -16,7 +16,7 @@
     uint32_t tMs;
     };
 
-    // --- CONFIGURAÇÃO DOS UUIDs DA TABELA GATT (3 SERVIÇOS DO EDITAL) ---
+    //CONFIGURAÇÃO DOS UUIDs DA TABELA GATT
     // Serviço 1: Monitoramento Ambiental (padrão 16-bit BLE 0x181A)
     #define SERVICE_MONITORING_UUID "0000181a-0000-1000-8000-00805f9b34fb"
     #define CHAR_TELEMETRY_UUID     "4FAFC202-1FB5-459E-8FCC-C5C9C331914B" 
@@ -33,7 +33,7 @@
     #define CHAR_RSSI_UUID          "4FAFC211-1FB5-459E-8FCC-C5C9C331914B"
     #define CHAR_NOTIF_COUNT_UUID   "4FAFC212-1FB5-459E-8FCC-C5C9C331914B" 
 
-    // --- HARDWARE MAPPING ---
+    // HARDWARE MAPPING
     #define DHT_PIN        18
     #define DHT_TYPE       DHT22
     #define LED1_PIN       2
@@ -62,7 +62,7 @@
     DHT dht(DHT_PIN, DHT_TYPE);
     LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-    // --- ESTADOS DO SISTEMA ---
+    //ESTADOS DO SISTEMA
     float curTempC = NAN, curTempF = NAN, curHum = NAN;
     float minTempC = NAN, maxTempC = NAN, minHum = NAN, maxHum = NAN;
 
@@ -94,7 +94,7 @@
     Button btnScreen{BTN_SCREEN_PIN, false, false, 0};
     Button btnReset {BTN_RESET_PIN,  false, false, 0};
 
-    // --- INSTÂNCIAS E CALLBACKS DO BLE ---
+    // INSTÂNCIAS E CALLBACKS DO BLE
     BLEServer* pServer = nullptr;
     
     // Características do Serviço 1
@@ -275,7 +275,7 @@
     if (swLed2 != lastSwLed2) { lastSwLed2 = swLed2; setLed2(swLed2); updateBleLedsState(); }
     }
 
-    // --- CALL BACKS DE CONEXÃO SERVER BLE ---
+    // CALL BACKS DE CONEXÃO SERVER BLE
     class ServerCallbacks: public BLEServerCallbacks {
         void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) {
         deviceConnected = true;
@@ -298,7 +298,7 @@
         }
     };
 
-    // --- CALLBACKS DE ESCRITA (DASHBOARD -> ESP32) ---
+    // CALLBACKS DE ESCRITA (DASHBOARD -> ESP32)
     class LedsWriteCallback: public BLECharacteristicCallbacks {
         void onWrite(BLECharacteristic *pCharacteristic) {
         if (remoteLocked()) {
@@ -350,7 +350,7 @@
         }
     };
 
-    // --- ENVIO PERIÓDICO DE TELEMETRIA POR NOTIFICAÇÃO BLE ---
+    // ENVIO PERIÓDICO DE TELEMETRIA POR NOTIFICAÇÃO BLE
     void sendTelemetryBle() {
     if (!deviceConnected) return;
 
@@ -402,15 +402,15 @@
   lcd.clear();
   goToScreen(0);
 
-  // --- SEPARAÇÃO LÓGICA: SÓ LIGA O BLE SE NÃO FOR NO WOKWI ---
+  // SEPARAÇÃO LÓGICA: SÓ LIGA O BLE SE NÃO FOR NO WOKWI
   #if !SIMULADOR_WOKWI
     BLEDevice::init("ESP32_Monitor_BLE");
     
-    // --- CONFIGURAÇÃO DE SEGURANÇA POR SENHA (PASSKEY) EXIGIDA PELO EDITAL ---
+    // CONFIGURAÇÃO DE SEGURANÇA POR SENHA (PASSKEY) EXIGIDA PELO EDITAL
     BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
     BLEDevice::setSecurityCallbacks(new MySecurityCallbacks());
     
-    // --- [COMENTADO] CASO DÊ PROBLEMA NA APRESENTAÇÃO DO TRABALHO, DESCOMENTE O BLOCO ABAIXO E APAGUE O BLOCO DE CIMA ---
+    // [COMENTADO] CASO DÊ PROBLEMA NA APRESENTAÇÃO DO TRABALHO, DESCOMENTE O BLOCO ABAIXO E APAGUE O BLOCO DE CIMA 
     /*
     BLESecurity *pSecurity = new BLESecurity();
     pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
@@ -420,7 +420,7 @@
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
     
-    // --- SERVIÇO 1: MONITORAMENTO AMBIENTAL (0x181A) ---
+    // SERVIÇO 1: MONITORAMENTO AMBIENTAL (0x181A)
     BLEService *pServiceMonitoring = pServer->createService(SERVICE_MONITORING_UUID);
     
     pCharTelemetry = pServiceMonitoring->createCharacteristic(
@@ -439,7 +439,7 @@
 
     pServiceMonitoring->start();
 
-    // --- SERVIÇO 2: CONTROLE DE ATUADORES ---
+    // SERVIÇO 2: CONTROLE DE ATUADORES
     BLEService *pServiceActuators = pServer->createService(SERVICE_ACTUATORS_UUID);
 
     pCharLeds = pServiceActuators->createCharacteristic(
@@ -465,7 +465,7 @@
 
     pServiceActuators->start();
 
-    // --- SERVIÇO 3: INDICADORES DE CONEXÃO ---
+    // SERVIÇO 3: INDICADORES DE CONEXÃO
     BLEService *pServiceConnection = pServer->createService(SERVICE_CONNECTION_UUID);
 
     pCharRssi = pServiceConnection->createCharacteristic(
@@ -484,7 +484,7 @@
 
     pServiceConnection->start();
 
-    // --- CONFIGURAÇÃO DE RÁDIO DO ANÚNCIO (ADVERTISING) ---
+    // CONFIGURAÇÃO DE RÁDIO DO ANÚNCIO (ADVERTISING)
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_MONITORING_UUID);
     pAdvertising->addServiceUUID(SERVICE_ACTUATORS_UUID);
